@@ -31,6 +31,20 @@ namespace bluffingcharts
                     if (row == firstRow + numRows)
                         return proportions;
                     if (row >= firstRow)
+                    {
+                        string percentOfObservationsString = csv.GetField(firstColumn - 1);
+                        if (percentOfObservationsString == "")
+                        {
+                            // we didn't even get to this round (everything settled)
+                            proportions[row - firstRow] = null;
+                            continue;
+                        }
+                        double percentOfObservations = csv.GetField<double>(firstColumn - 1);
+                        if (percentOfObservations < 0.005)
+                        {
+                            proportions[row - firstRow] = null;
+                            continue;
+                        }
                         for (int column = firstColumn; column < firstColumn + numColumns; column++)
                         {
                             if (csv.GetField<string>(column) == "")
@@ -40,8 +54,15 @@ namespace bluffingcharts
                             }
                             proportions[row - firstRow][column - firstColumn] = csv.GetField<double>(column);
                         }
+                        if (Math.Abs(proportions[row - firstRow].Sum() - 1.0) > 0.01)
+                            throw new Exception();
+                    }
                 }
+                if (row < firstRow)
+                    throw new Exception("Expected row not found");
             }
+            if (proportions.Any(x => x != null && Math.Abs(x.Sum() - 1.0) > 0.01))
+                throw new Exception();
             return proportions;
         }
 
@@ -76,10 +97,10 @@ namespace bluffingcharts
             Rectangle rect = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
             g.DrawRectangle(new Pen(Brushes.Black), rect);
             Rectangle innerRect = new Rectangle(r.X + 1, r.Y + 1, r.Width - 2, r.Height - 2);
-            int lowestAlpha = 100;
-            int highestAlpha = 200;
+            int lowestAlpha = 30;
+            int highestAlpha = 225;
             int stepSize = (int) (((float)(highestAlpha - lowestAlpha))/((float)(maxIntensity - 1)));
-            byte alpha = (byte)(lowestAlpha + (intensity - 1) * stepSize);
+            byte alpha = (byte)(lowestAlpha + intensity  * stepSize);
             System.Drawing.Color adjustedColor = Color.FromArgb(alpha, color);
             Brush brush = new SolidBrush(adjustedColor);
             g.FillRectangle(brush, innerRect);
@@ -103,6 +124,8 @@ namespace bluffingcharts
             {
                 proportions = Enumerable.Range(1, numRectangles).Select(x => 1.0 / (double) numRectangles).ToArray();
             }
+            if (proportions.Sum() == 0)
+                throw new Exception();
             pixels = proportions.Select(x => (int)(x * availableSpace)).ToArray();
             int spaceAdjustment = pixels.Sum() - availableSpace;
             int indexToChange = -1;
@@ -184,10 +207,8 @@ namespace bluffingcharts
             g.DrawString(text, font, brush, r, stringFormatHorizontally);
         }
 
-        private static void PlotPAndDThreeRounds(string path, string filename, Graphics g, Rectangle r, int numSignals, int numOffers, bool addRoundHeaders = true)
+        private static void PlotPAndD(string path, string filename, Graphics g, Rectangle r, int numRounds, int numSignals, int numOffers, bool addRoundHeaders = true)
         {
-            int numRounds = 3;
-
             int marginBetweenSetsAcross = 10 * bitmapMultiplier;
             int marginBetweenSetsVertically = 10 * bitmapMultiplier;
             GetMainFont(out int fontSize, out Font f);
@@ -196,20 +217,38 @@ namespace bluffingcharts
                 r = AddRoundHeaders(g, r, numRounds, fontSize);
 
             Rectangle[] verticallyDivided = DivideRectangle(r, false, 2, marginBetweenSetsVertically);
-            var plaintiffRoundLocations = new (int firstRow, int firstColumn)[]
+            (int firstRow, int firstColumn)[] plaintiffRoundLocations, defendantRoundLocations;
+            if (numRounds == 3)
             {
-                (140, 85),
-                (152, 97),
-                (164, 109)
-            };
+                plaintiffRoundLocations = new (int firstRow, int firstColumn)[]
+                {
+                    (140, 85),
+                    (152, 97),
+                    (164, 109)
+                };
+                defendantRoundLocations = new (int firstRow, int firstColumn)[]
+                {
+                    (146, 91),
+                    (158, 103),
+                    (170, 115)
+                };
+            }
+            else if (numRounds == 2)
+            {
+                plaintiffRoundLocations = new (int firstRow, int firstColumn)[]
+                {
+                    (133, 69),
+                    (145, 81),
+                };
+                defendantRoundLocations = new (int firstRow, int firstColumn)[]
+                {
+                    (139, 75),
+                    (151, 87),
+                };
+            }
+            else throw new NotSupportedException();
             bool includeTextWherePossible = true;
             GetDataFromCSVAndPlotAcross(path, g, verticallyDivided[0], filename, plaintiffRoundLocations, numSignals, numOffers, marginBetweenSetsAcross, Color.Blue, includeTextWherePossible);
-            var defendantRoundLocations = new (int firstRow, int firstColumn)[]
-            {
-                (146, 91),
-                (158, 103),
-                (170, 115)
-            };
             GetDataFromCSVAndPlotAcross(path, g, verticallyDivided[1], filename, defendantRoundLocations, numSignals, numOffers, marginBetweenSetsAcross, Color.Orange, includeTextWherePossible);
         }
 
@@ -269,33 +308,26 @@ namespace bluffingcharts
 
         const int bitmapMultiplier = 10;
 
-        static void Main(string[] args)
-        {
-            string path = @"H:\My Drive\Articles, books in progress\Machine learning model of litigation\bluffing results";
-            string filename = "R070 baseline";
-            PlotPAndDThreeRounds_WithHidden(path, filename, numSignals: 5, numOffers: 5);
-        }
-
-        private static void PlotPAndDThreeRounds_WithHidden(string path, string filename, int numSignals, int numOffers)
+        private static void PlotPAndD_WithHidden(string path, string filename, int numRounds, int numSignals, int numOffers)
         {
             GetMainFont(out int fontSize, out Font f);
             CreateBlankDrawing(out Bitmap bmpOut, out Graphics g, out Rectangle r);
             int margin = 10 * bitmapMultiplier;
-            r = AddRoundHeaders(g, r, 3, fontSize);
+            r = AddRoundHeaders(g, r, numRounds, fontSize);
             r = AddLeftHeaders(g, r, margin, "Revealed Offers", "Hidden Offers");
             Rectangle[] regularAndHidden = DivideRectangle(r, false, 2, margin);
-            PlotPAndDThreeRounds(path, filename, g, regularAndHidden[0], numSignals, numOffers, false);
-            PlotPAndDThreeRounds(path, filename + "-hidden", g, regularAndHidden[1], numSignals, numOffers, false);
+            PlotPAndD(path, filename, g, regularAndHidden[0], numRounds, numSignals, numOffers, false);
+            PlotPAndD(path, filename + "-hidden", g, regularAndHidden[1], numRounds, numSignals, numOffers, false);
             bmpOut.Save(path + @"\plot-" + filename + ".png");
         }
 
-        private static void PlotPAndDThreeRounds(string path, string filename, int numSignals, int numOffers)
+        private static void PlotPAndD(string path, string filename, int numRounds, int numSignals, int numOffers)
         {
             Bitmap bmpOut;
             Graphics g;
             Rectangle overall;
             CreateBlankDrawing(out bmpOut, out g, out overall);
-            PlotPAndDThreeRounds(path, filename, g, overall, numSignals, numOffers);
+            PlotPAndD(path, filename, g, overall, numRounds, numSignals, numOffers);
             bmpOut.Save(path + @"\plot-" + filename + ".png");
         }
 
@@ -307,6 +339,19 @@ namespace bluffingcharts
             g = System.Drawing.Graphics.FromImage(bmpOut);
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             overall = new Rectangle(5 * bitmapMultiplier, 5 * bitmapMultiplier, NewWidth - 10 * bitmapMultiplier, NewHeight - 10 * bitmapMultiplier);
+        }
+
+        static void Main(string[] args)
+        {
+            string path = @"H:\My Drive\Articles, books in progress\Machine learning model of litigation\bluffing results";
+
+            string[] filenames = new[] { "R070 baseline", "R070 cfrplus", "R070 locost", "R070 hicost", "R070 pra", "R070 dra", "R070 bra", "R070 goodinf", "R070 badinf", "R070 pgdbinf", "R070 pbdginf" };
+            foreach (string filename in filenames)
+                PlotPAndD_WithHidden(path, filename, numRounds: 3, numSignals: 5, numOffers: 5);
+
+            filenames = new[] { "R070 twobr" };
+            foreach (string filename in filenames)
+                PlotPAndD_WithHidden(path, filename, numRounds: 2, numSignals: 5, numOffers: 5);
         }
     }
 }
