@@ -8,9 +8,27 @@ using System.Linq;
 
 namespace bluffingcharts
 {
-    class Program
+    static class ACESimCharts
     {
-        static double[][] GetValuesFromCSV(string fileName, int firstRow, int firstColumn, int numRows, int numColumns)
+        public const int bitmapMultiplier = 10;
+
+        #region Drawings
+
+        public static void CreateBlankDrawing(out Bitmap bmpOut, out Graphics g, out Rectangle overall)
+        {
+            int NewWidth = 500 * bitmapMultiplier;
+            int NewHeight = 300 * bitmapMultiplier;
+            bmpOut = new System.Drawing.Bitmap(NewWidth, NewHeight);
+            g = System.Drawing.Graphics.FromImage(bmpOut);
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+            overall = new Rectangle(5 * bitmapMultiplier, 5 * bitmapMultiplier, NewWidth - 10 * bitmapMultiplier, NewHeight - 10 * bitmapMultiplier);
+        }
+
+        #endregion
+
+        #region Data
+
+        public static double[][] GetValuesFromCSV(string fileName, int firstRow, int firstColumn, int numRows, int numColumns)
         {
             // Change from 1 numbering to 0 numbering
             firstRow -= 2; // 1 to adjust for 1 numbering, and 1 to adjust for header row
@@ -66,14 +84,35 @@ namespace bluffingcharts
             return proportions;
         }
 
-        static void BarFill(Graphics g, Rectangle r, bool individualSetHorizontally, double[][] proportions, Color color, bool includeTextWherePossible)
+        public static void GetDataFromCSVAndPlotAcross(string path, Graphics g, Rectangle r, string filename, (int firstRow, int firstColumn)[] setLocations, int numRowsPerSet, int numColumnsPerSet, int marginBetweenSets, Color color, bool includeTextWherePossible)
+        {
+            int numSets = setLocations.Length;
+            Rectangle[] rects = ACESimCharts.DivideRectangle(r, true, numSets, marginBetweenSets);
+            for (int set = 0; set < numSets; set++)
+            {
+                double[][] data = GetValuesFromCSV(path + @"\" + filename + ".csv", setLocations[set].firstRow, setLocations[set].firstColumn, numRowsPerSet, numColumnsPerSet);
+                BarFill(g, rects[set], true, data, color, includeTextWherePossible);
+            }
+        }
+
+        public static void GetDataFromCSVAndPlot(string path, Graphics g, Rectangle r, string filename, int firstRow, int firstColumn, int numRows, int numColumns, Color color, bool includeTextWherePossible)
+        {
+            double[][] data = GetValuesFromCSV(path + @"\" + filename + ".csv", firstRow, firstColumn, numRows, numColumns);
+            BarFill(g, r, true, data, color, includeTextWherePossible);
+        }
+
+        #endregion
+
+        #region Bars
+
+        public static void BarFill(Graphics g, Rectangle r, bool individualSetHorizontally, double[][] proportions, Color color, bool includeTextWherePossible)
         {
             Rectangle[] rectangles = DivideRectangle(r, !individualSetHorizontally, proportions.Length, 2 * bitmapMultiplier);
             for (int i = 0; i < proportions.Length; i++)
                 BarFill(g, rectangles[i], individualSetHorizontally, proportions[i], color, includeTextWherePossible);
         }
 
-        static void BarFill(Graphics g, Rectangle r, bool horizontally, double[] proportions, Color color, bool includeTextWherePossible)
+        public static void BarFill(Graphics g, Rectangle r, bool horizontally, double[] proportions, Color color, bool includeTextWherePossible)
         {
             if (proportions == null)
                 return;
@@ -90,7 +129,11 @@ namespace bluffingcharts
             }
         }
 
-        static void DrawAndFillRectangle(Graphics g, Rectangle r, int intensity, int maxIntensity, Color color)
+        #endregion
+
+        #region Rectangles
+
+        public static void DrawAndFillRectangle(Graphics g, Rectangle r, int intensity, int maxIntensity, Color color)
         {
             if (r.Width == 0)
                 return;
@@ -99,21 +142,21 @@ namespace bluffingcharts
             Rectangle innerRect = new Rectangle(r.X + 1, r.Y + 1, r.Width - 2, r.Height - 2);
             int lowestAlpha = 30;
             int highestAlpha = 225;
-            int stepSize = (int) (((float)(highestAlpha - lowestAlpha))/((float)(maxIntensity - 1)));
-            byte alpha = (byte)(lowestAlpha + intensity  * stepSize);
+            int stepSize = (int)(((float)(highestAlpha - lowestAlpha)) / ((float)(maxIntensity - 1)));
+            byte alpha = (byte)(lowestAlpha + intensity * stepSize);
             System.Drawing.Color adjustedColor = Color.FromArgb(alpha, color);
             Brush brush = new SolidBrush(adjustedColor);
             g.FillRectangle(brush, innerRect);
         }
 
-        static Rectangle[] DivideRectangle_WithSpaceForHeader(Rectangle r, bool horizontally, int pixelsForHeader)
+        public static Rectangle[] DivideRectangle_WithSpaceForHeader(Rectangle r, bool horizontally, int pixelsForHeader)
         {
-            double proportionForHeader = (double)pixelsForHeader / (double) (horizontally ? r.Width : r.Height);
+            double proportionForHeader = (double)pixelsForHeader / (double)(horizontally ? r.Width : r.Height);
             double[] proportions = new double[] { proportionForHeader, 1.0 - proportionForHeader };
             return DivideRectangle(r, horizontally, 2, 0, proportions);
         }
 
-        static Rectangle[] DivideRectangle(Rectangle r, bool horizontally, int numRectangles, int margin, double[] proportions = null)
+        public static Rectangle[] DivideRectangle(Rectangle r, bool horizontally, int numRectangles, int margin, double[] proportions = null)
         {
             Rectangle[] result = new Rectangle[numRectangles];
             int[] pixels = new int[numRectangles];
@@ -122,7 +165,7 @@ namespace bluffingcharts
             int pixelsEach = availableSpace / numRectangles;
             if (proportions == null)
             {
-                proportions = Enumerable.Range(1, numRectangles).Select(x => 1.0 / (double) numRectangles).ToArray();
+                proportions = Enumerable.Range(1, numRectangles).Select(x => 1.0 / (double)numRectangles).ToArray();
             }
             if (proportions.Sum() == 0)
                 throw new Exception();
@@ -159,21 +202,46 @@ namespace bluffingcharts
             return result;
         }
 
-        static void GetDataFromCSVAndPlotAcross(string path, Graphics g, Rectangle r, string filename, (int firstRow, int firstColumn)[] setLocations, int numRowsPerSet, int numColumnsPerSet, int marginBetweenSets, Color color, bool includeTextWherePossible)
+        public static Rectangle AddRoundHeaders(Graphics g, Rectangle r, int numRounds, int fontSize)
         {
-            int numSets = setLocations.Length;
-            Rectangle[] rects = DivideRectangle(r, true, numSets, marginBetweenSets);
-            for (int set = 0; set < numSets; set++)
-            {
-                double[][] data = GetValuesFromCSV(path + @"\" + filename + ".csv", setLocations[set].firstRow, setLocations[set].firstColumn, numRowsPerSet, numColumnsPerSet);
-                BarFill(g, rects[set], true, data, color, includeTextWherePossible);
-            }
+            r = AddTopHeaders(g, r, fontSize + 3 * bitmapMultiplier, 3 * (fontSize + 3 * bitmapMultiplier), Enumerable.Range(1, numRounds).Select(x => $"Round {x}").ToArray());
+            return r;
         }
 
-        static void GetDataFromCSVAndPlot(string path, Graphics g, Rectangle r, string filename, int firstRow, int firstColumn, int numRows, int numColumns, Color color, bool includeTextWherePossible)
+        public static Rectangle AddLeftHeaders(Graphics g, Rectangle overallRectangle, int marginBetweenSetsVertically, params string[] text)
         {
-            double[][] data = GetValuesFromCSV(path + @"\" + filename + ".csv", firstRow, firstColumn, numRows, numColumns);
-            BarFill(g, r, true, data, color, includeTextWherePossible);
+            GetMainFont(out int fontSize, out Font f);
+            Rectangle[] leftHeaderAndRest = DivideRectangle_WithSpaceForHeader(overallRectangle, true, fontSize + 3 * bitmapMultiplier);
+            Rectangle leftHeaderSet = leftHeaderAndRest[0];
+            Rectangle[] leftHeaders = DivideRectangle(leftHeaderSet, false, text.Length, marginBetweenSetsVertically);
+            for (int i = 0; i < text.Length; i++)
+                DrawText270(g, leftHeaders[i], text[i], f, Brushes.Black);
+            Rectangle everythingRemaining = leftHeaderAndRest[1];
+            return everythingRemaining;
+        }
+
+        public static Rectangle AddTopHeaders(Graphics g, Rectangle overallRectangle, int marginBetweenSetsHorizontally, int spaceLeftForLeftHeaders, params string[] text)
+        {
+            GetMainFont(out int fontSize, out Font f);
+            Rectangle[] topHeaderAndRest = DivideRectangle_WithSpaceForHeader(overallRectangle, false, fontSize + 3 * bitmapMultiplier);
+            Rectangle topHeaderSet = topHeaderAndRest[0];
+            topHeaderSet.Size = new Size(topHeaderSet.Width - spaceLeftForLeftHeaders, topHeaderSet.Height);
+            topHeaderSet.Offset(spaceLeftForLeftHeaders, 0);
+            Rectangle[] topHeaders = DivideRectangle(topHeaderSet, true, text.Length, marginBetweenSetsHorizontally);
+            for (int i = 0; i < text.Length; i++)
+                DrawTextCenteredHorizontally(g, topHeaders[i], text[i], f, Brushes.Black);
+            Rectangle everythingRemaining = topHeaderAndRest[1];
+            return everythingRemaining;
+        }
+
+        #endregion
+
+        #region Text
+
+        public static void GetMainFont(out int fontSize, out Font f)
+        {
+            fontSize = 12 * bitmapMultiplier;
+            f = new Font(FontFamily.Families.First(x => x.Name == "Calibri Light"), fontSize, GraphicsUnit.World);
         }
 
         public static void DrawText270(Graphics g, Rectangle r, string text, Font font, Brush brush)
@@ -207,7 +275,11 @@ namespace bluffingcharts
             g.DrawString(text, font, brush, r, stringFormatHorizontally);
         }
 
-        private static void PlotPAndD(string path, string filename, Graphics g, Rectangle r, int numRounds, int numSignals, int numOffers, bool addRoundHeaders = true)
+        #endregion
+
+        #region Plaintiff-Defendant plots
+
+        public static void PlotPAndD(string path, string filename, Graphics g, Rectangle r, int numRounds, int numSignals, int numOffers, bool addRoundHeaders = true)
         {
             int marginBetweenSetsAcross = 10 * bitmapMultiplier;
             int marginBetweenSetsVertically = 10 * bitmapMultiplier;
@@ -252,19 +324,30 @@ namespace bluffingcharts
             GetDataFromCSVAndPlotAcross(path, g, verticallyDivided[1], filename, defendantRoundLocations, numSignals, numOffers, marginBetweenSetsAcross, Color.Orange, includeTextWherePossible);
         }
 
-        private static Rectangle AddRoundHeaders(Graphics g, Rectangle r, int numRounds, int fontSize)
+        public static void PlotPAndD_WithHidden(string path, string filename, int numRounds, int numSignals, int numOffers)
         {
-            r = AddTopHeaders(g, r, fontSize + 3 * bitmapMultiplier, 3 * (fontSize + 3 * bitmapMultiplier), Enumerable.Range(1, numRounds).Select(x => $"Round {x}").ToArray());
-            return r;
+            GetMainFont(out int fontSize, out Font f);
+            CreateBlankDrawing(out Bitmap bmpOut, out Graphics g, out Rectangle r);
+            int margin = 10 * bitmapMultiplier;
+            r = AddRoundHeaders(g, r, numRounds, fontSize);
+            r = AddLeftHeaders(g, r, margin, "Revealed Offers", "Hidden Offers");
+            Rectangle[] regularAndHidden = DivideRectangle(r, false, 2, margin);
+            PlotPAndD(path, filename, g, regularAndHidden[0], numRounds, numSignals, numOffers, false);
+            PlotPAndD(path, filename + "-hidden", g, regularAndHidden[1], numRounds, numSignals, numOffers, false);
+            bmpOut.Save(path + @"\plot-" + filename + ".png");
         }
 
-        private static void GetMainFont(out int fontSize, out Font f)
+        public static void PlotPAndD(string path, string filename, int numRounds, int numSignals, int numOffers)
         {
-            fontSize = 12 * bitmapMultiplier;
-            f = new Font(FontFamily.Families.First(x => x.Name == "Calibri Light"), fontSize, GraphicsUnit.World);
+            Bitmap bmpOut;
+            Graphics g;
+            Rectangle overall;
+            CreateBlankDrawing(out bmpOut, out g, out overall);
+            PlotPAndD(path, filename, g, overall, numRounds, numSignals, numOffers);
+            bmpOut.Save(path + @"\plot-" + filename + ".png");
         }
 
-        private static Rectangle AddLeftHeaders_WithFurtherSubdivision(Graphics g, Rectangle overallRectangle, int outerMarginBetweenSetsVertically, int innerMarginBetweenSetsVertically, string[] textOuter, string[] textInner)
+        public static Rectangle AddLeftHeaders_WithFurtherSubdivision(Graphics g, Rectangle overallRectangle, int outerMarginBetweenSetsVertically, int innerMarginBetweenSetsVertically, string[] textOuter, string[] textInner)
         {
             overallRectangle = AddLeftHeaders(g, overallRectangle, outerMarginBetweenSetsVertically, textOuter);
             var divided = DivideRectangle(overallRectangle, false, textOuter.Length, outerMarginBetweenSetsVertically);
@@ -280,78 +363,27 @@ namespace bluffingcharts
             return remaining;
         }
 
-        private static Rectangle AddLeftHeaders(Graphics g, Rectangle overallRectangle, int marginBetweenSetsVertically, params string[] text)
-        {
-            GetMainFont(out int fontSize, out Font f);
-            Rectangle[] leftHeaderAndRest = DivideRectangle_WithSpaceForHeader(overallRectangle, true, fontSize + 3 * bitmapMultiplier);
-            Rectangle leftHeaderSet = leftHeaderAndRest[0];
-            Rectangle[] leftHeaders = DivideRectangle(leftHeaderSet, false, text.Length, marginBetweenSetsVertically);
-            for (int i = 0; i < text.Length; i++)
-                DrawText270(g, leftHeaders[i], text[i], f, Brushes.Black);
-            Rectangle everythingRemaining = leftHeaderAndRest[1];
-            return everythingRemaining;
-        }
+        #endregion
+    }
 
-        private static Rectangle AddTopHeaders(Graphics g, Rectangle overallRectangle, int marginBetweenSetsHorizontally, int spaceLeftForLeftHeaders, params string[] text)
-        {
-            GetMainFont(out int fontSize, out Font f);
-            Rectangle[] topHeaderAndRest = DivideRectangle_WithSpaceForHeader(overallRectangle, false, fontSize + 3 * bitmapMultiplier);
-            Rectangle topHeaderSet = topHeaderAndRest[0];
-            topHeaderSet.Size = new Size(topHeaderSet.Width - spaceLeftForLeftHeaders, topHeaderSet.Height);
-            topHeaderSet.Offset(spaceLeftForLeftHeaders, 0);
-            Rectangle[] topHeaders = DivideRectangle(topHeaderSet, true, text.Length, marginBetweenSetsHorizontally);
-            for (int i = 0; i < text.Length; i++)
-                DrawTextCenteredHorizontally(g, topHeaders[i], text[i], f, Brushes.Black);
-            Rectangle everythingRemaining = topHeaderAndRest[1];
-            return everythingRemaining;
-        }
-
-        const int bitmapMultiplier = 10;
-
-        private static void PlotPAndD_WithHidden(string path, string filename, int numRounds, int numSignals, int numOffers)
-        {
-            GetMainFont(out int fontSize, out Font f);
-            CreateBlankDrawing(out Bitmap bmpOut, out Graphics g, out Rectangle r);
-            int margin = 10 * bitmapMultiplier;
-            r = AddRoundHeaders(g, r, numRounds, fontSize);
-            r = AddLeftHeaders(g, r, margin, "Revealed Offers", "Hidden Offers");
-            Rectangle[] regularAndHidden = DivideRectangle(r, false, 2, margin);
-            PlotPAndD(path, filename, g, regularAndHidden[0], numRounds, numSignals, numOffers, false);
-            PlotPAndD(path, filename + "-hidden", g, regularAndHidden[1], numRounds, numSignals, numOffers, false);
-            bmpOut.Save(path + @"\plot-" + filename + ".png");
-        }
-
-        private static void PlotPAndD(string path, string filename, int numRounds, int numSignals, int numOffers)
-        {
-            Bitmap bmpOut;
-            Graphics g;
-            Rectangle overall;
-            CreateBlankDrawing(out bmpOut, out g, out overall);
-            PlotPAndD(path, filename, g, overall, numRounds, numSignals, numOffers);
-            bmpOut.Save(path + @"\plot-" + filename + ".png");
-        }
-
-        private static void CreateBlankDrawing(out Bitmap bmpOut, out Graphics g, out Rectangle overall)
-        {
-            int NewWidth = 500 * bitmapMultiplier;
-            int NewHeight = 300 * bitmapMultiplier;
-            bmpOut = new System.Drawing.Bitmap(NewWidth, NewHeight);
-            g = System.Drawing.Graphics.FromImage(bmpOut);
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-            overall = new Rectangle(5 * bitmapMultiplier, 5 * bitmapMultiplier, NewWidth - 10 * bitmapMultiplier, NewHeight - 10 * bitmapMultiplier);
-        }
+    class Program
+    {
 
         static void Main(string[] args)
         {
             string path = @"H:\My Drive\Articles, books in progress\Machine learning model of litigation\bluffing results";
 
+            //todo; // check the proportion that settle in round 1 etc. Then, if proportion is sufficiently low for next round, leave it out altogether. (relevant for hicost).
+
+            //todo; // consider adding settlement percentages in Round header -- but then we'll need to repeat the header) -- we might have a big header "Round (Settlement %)" and then entries like 1 (76%).
+
             string[] filenames = new[] { "R070 baseline", "R070 cfrplus", "R070 locost", "R070 hicost", "R070 pra", "R070 dra", "R070 bra", "R070 goodinf", "R070 badinf", "R070 pgdbinf", "R070 pbdginf" };
             foreach (string filename in filenames)
-                PlotPAndD_WithHidden(path, filename, numRounds: 3, numSignals: 5, numOffers: 5);
+                ACESimCharts.PlotPAndD_WithHidden(path, filename, numRounds: 3, numSignals: 5, numOffers: 5);
 
             filenames = new[] { "R070 twobr" };
             foreach (string filename in filenames)
-                PlotPAndD_WithHidden(path, filename, numRounds: 2, numSignals: 5, numOffers: 5);
+                ACESimCharts.PlotPAndD_WithHidden(path, filename, numRounds: 2, numSignals: 5, numOffers: 5);
         }
     }
 }
